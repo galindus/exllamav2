@@ -53,8 +53,10 @@ class ExLlamaV2Sampler:
 
         # Token bias
 
-        # if settings.token_bias is not None:
-        #     logits += settings.token_bias
+        if settings.token_bias is not None:
+            if logits.device != settings.token_bias.device:
+                settings.token_bias = settings.token_bias.to(logits.device)
+            logits += settings.token_bias
 
         # Sampling
 
