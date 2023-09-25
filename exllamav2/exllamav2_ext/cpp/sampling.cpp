@@ -439,7 +439,3 @@ int multinomial_cpu
 
     return 1;
 }
-
-
-
-
