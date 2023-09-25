@@ -600,76 +600,66 @@ void sample_basic
     torch::Tensor output_probs      // shape [bsz, 1]
 )
 {
-    TORCH_CHECK_DTYPE(logits, kFloat);
+    TORCH_CHECK(
+        logits.dtype() == torch::kFloat32 || logits.dtype() == torch::kFloat16 || logits.dtype() == torch::kFloat,
+        "logits must be of type float32 or float16"
+    );
     TORCH_CHECK_DTYPE(output_tokens, kLong);
-    TORCH_CHECK_DTYPE(output_probs, kFloat);
-    TORCH_CHECK_DTYPE(logits, kFloat);
-
+    TORCH_CHECK(
+        output_probs.dtype() == torch::kFloat32 || output_probs.dtype() == torch::kFloat16 || output_probs.dtype() == torch::kFloat,
+        "logits must be of type float32 or float16"
+    );
     int vocab_size = logits.size(-1);
     int bsz = logits.size(0);
 
-    float* temp_probs = (float*) malloc(vocab_size * sizeof(float));
-    int* temp_indices = (int*) malloc(vocab_size * sizeof(int));
-
-    int64_t* output_tokens_ptr = (int64_t*) output_tokens.data_ptr();
-    float* output_probs_ptr = (float*) output_tokens.data_ptr();
-    float* logits_ptr = (float*) logits.data_ptr();
-
     for (int i = 0; i < bsz; i++)
     {
-        softmax_cpu(vocab_size, temperature, logits_ptr + i * vocab_size, temp_probs);
-
+        auto cur_logits = logits[i];
         if (top_k == 1)
         {
-            int index = greedy_sample(vocab_size, logits_ptr + i * vocab_size);
-            output_tokens[i] = index;
-            output_probs[i] = temp_probs[index];
+            auto max_result = cur_logits.max(0);
+            auto max_val = std::get<0>(max_result).item<float>();
+            auto max_idx = std::get<1>(max_result).item<int64_t>();
+
+            output_tokens[i] = max_idx;
+            output_probs[i] = max_val;
             continue;
         }
 
-//        if (top_k == 1)
-//        {
-//            int index = greedy_sample(vocab_size, logits_ptr + i * vocab_size);
-//            output_tokens[i] = index;
-//            output_probs[i] = temp_probs[index];
-//            continue;
-//        }
-//
-//        softmax_cpu(vocab_size, temperature, logits_ptr + i * vocab_size, temp_probs);
+        auto probs = torch::softmax(cur_logits / temperature, 0);
 
-        for (int j = 0; j < vocab_size; j++) temp_indices[j] = j;
-        int num_candidates = vocab_size;
-
-//        if (top_k > 0 || top_p > 0)
-//        {
-//            sort_descending(num_candidates, temp_probs, temp_indices, top_k);
-//        }
+        torch::Tensor sample_probs = probs;
+        torch::Tensor sample_indices = torch::arange(probs.size(0));
 
         if (top_k > 0)
         {
-            num_candidates = top_k_cpu(num_candidates, temp_probs, temp_indices, top_k);
-            normalize_cpu(num_candidates, temp_probs);
+            auto top_k_result = probs.topk(top_k, 0);
+            sample_probs = std::get<0>(top_k_result);
+            sample_indices = std::get<1>(top_k_result);
+            sample_probs /= torch::sum(sample_probs);
         }
 
+        // Debug prints to examine the behavior of top_p filtering
         if (top_p > 0.0f)
         {
-            num_candidates = top_p_cpu(num_candidates, temp_probs, temp_indices, top_p);
-            normalize_cpu(num_candidates, temp_probs);
+            auto sorted_probs = sample_probs.sort(0, true);
+            auto sorted_indices = std::get<1>(sorted_probs);
+            auto cum_prob = sample_probs.cumsum(0);
+            auto mask = cum_prob <= top_p;
+            // Always keep the most probable token
+            mask[0] = 1;
+
+            sample_indices = sample_indices.masked_select(mask);
+            sample_probs = sample_probs.masked_select(mask);
+            sample_probs /= torch::sum(sample_probs);
         }
 
-        if (typical > 0.0f)
-        {
-            num_candidates = typical_cpu(num_candidates, temp_probs, temp_indices, typical);
-            normalize_cpu(num_candidates, temp_probs);
-        }
+        auto sample_idx = torch::multinomial(sample_probs, 1).item<int64_t>();
+        auto token_id = sample_indices[sample_idx].item<int64_t>();
 
-        num_candidates = multinomial_cpu(num_candidates, temp_probs, temp_indices, random);
-        output_tokens[i] = temp_indices[0];
-        output_probs[i] = temp_probs[0];
+        output_tokens[i] = token_id;
+        output_probs[i] = sample_probs[sample_idx].item<float>();
     }
-
-    free(temp_probs);
-    free(temp_indices);
 }
 
 
