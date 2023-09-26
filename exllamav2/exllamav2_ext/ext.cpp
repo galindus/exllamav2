@@ -626,6 +626,11 @@ void sample_basic
             continue;
         }
 
+        // convert cur_logits to float32 if half type
+        if (cur_logits.dtype() == torch::kFloat16)
+        {
+            cur_logits = cur_logits.to(torch::kFloat32);
+        }
         auto probs = torch::softmax(cur_logits / temperature, 0);
 
         torch::Tensor sample_probs = probs;
