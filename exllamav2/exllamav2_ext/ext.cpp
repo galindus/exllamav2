@@ -625,7 +625,7 @@ std::tuple<torch::Tensor, torch::Tensor> sample_basic
     // Debug prints to examine the behavior of top_p filtering
     if (top_p > 0.0f)
     {
-        auto sorted_probs, sorted_indices;
+        torch::Tensor sorted_probs, sorted_indices;
         std::tie(sorted_probs, sorted_indices) = sample_probs.sort(1, true);
         auto cum_prob = sorted_probs.cumsum(1);
 

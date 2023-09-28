@@ -21,6 +21,7 @@ config = ExLlamaV2Config()
 config.model_dir = model_directory
 config.embed_cpu = False
 config.max_input_len = 4000
+config.max_batch_size = 5
 config.prepare()
 
 model = ExLlamaV2(config)
@@ -31,7 +32,7 @@ print("Loading model: " + model_directory)
 model.load()
 
 tokenizer = ExLlamaV2Tokenizer(config)
-batch_size = 1
+batch_size = 2
 # cache = ExLlamaV2Cache(model, batch_size=batch_size)
 cache = None
 
@@ -68,16 +69,19 @@ max_new_tokens = 1000
 generator.warmup()
 time_begin = time.time()
 
-output = generator.generate_simple(prompt, settings, max_new_tokens, seed=1234)
+# output = generator.generate_simple([prompt, prompt], settings, max_new_tokens, seed=1234)
+output = generator.generate_simple([prompt] * batch_size, settings, max_new_tokens, seed=1234)
 
 time_end = time.time()
 time_total = time_end - time_begin
 
 tokens_in = tokenizer.encode(prompt).shape[-1]
-tokens_out = tokenizer.encode(output).shape[-1]
+tokens_out = 0
+for o in output:
+    tokens_out += tokenizer.encode(o).shape[-1]
 
-# print(output)
-generated_tolkens = tokens_out - tokens_in
+
+generated_tolkens = tokens_out - batch_size*tokens_in
 print(
     f"Response generated in {time_total:.2f} seconds, {batch_size} batch with input tokens {tokens_in} and {generated_tolkens} generated tokens, { generated_tolkens / time_total:.2f} tokens/second"
 )

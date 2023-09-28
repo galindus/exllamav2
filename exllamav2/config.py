@@ -19,6 +19,7 @@ class ExLlamaV2Config:
 
     # Loaded/set by .prepare():
 
+    embed_cpu: bool = True
     model_config: str
     tensor_file_map: dict
     tensor_files: list

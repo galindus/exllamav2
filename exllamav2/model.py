@@ -101,7 +101,7 @@ class ExLlamaV2:
     last_kv_layer_idx: int
     head_layer_idx: int
     device: str
-    embed_cpu: bool = True
+    embed_cpu: bool
 
     def __init__(self, config: ExLlamaV2Config, lazy_load=False):
         self.config = config
@@ -111,6 +111,9 @@ class ExLlamaV2:
         self.cache_map = {}
 
         # Build model
+
+        self.embed_cpu = config.embed_cpu
+        self.device = "cpu" if self.embed_cpu else "cuda:0"
 
         self.modules.append(ExLlamaV2Embedding(self, "model.embed_tokens"))
         self.modules_dict[self.modules[-1].key] = self.modules[-1]
@@ -315,7 +318,7 @@ class ExLlamaV2:
         # is less than config.max_input_len
 
         if cache is None or not isinstance(cache, ExLlamaV2Cache):
-            assert q_len <= effective_max_input_len, "Maximum input length exceeded in model.forward"
+            assert q_len <= effective_max_input_len, f"Maximum input length {effective_max_input_len} exceeded in model.forward {q_len}"
 
             return self._forward(
                 input_ids=input_ids,
