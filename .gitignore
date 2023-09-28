@@ -1,5 +1,6 @@
 *.egg-info/
 build/
+*.so
 # Python
 __pycache__
 *.pyc

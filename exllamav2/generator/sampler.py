@@ -60,12 +60,8 @@ class ExLlamaV2Sampler:
 
         # Sampling
 
-        batch_size = logits.shape[0]
-        device = logits.device
-        output_tokens = torch.empty((batch_size, 1), device=device, dtype=torch.long)
-        output_probs = torch.empty((batch_size, 1), device=device, dtype=torch.float)
-        ext_c.sample_basic(
-            logits, settings.temperature, settings.top_k, settings.top_p, random, output_tokens, output_probs
+        output_tokens, output_probs = ext_c.sample_basic(
+            logits, settings.temperature, settings.top_k, settings.top_p, settings.typical, random
         )
 
         return output_tokens, output_probs

@@ -588,83 +588,63 @@ void apply_rep_penalty
     }
 }
 
-void sample_basic
+std::tuple<torch::Tensor, torch::Tensor> sample_basic
 (
     torch::Tensor logits,           // shape [bsz, vocab_size]
     float temperature,
     int top_k,
     float top_p,
     float typical,
-    float random,
-    torch::Tensor output_tokens,    // shape [bsz, 1]
-    torch::Tensor output_probs      // shape [bsz, 1]
+    float random
 )
 {
     TORCH_CHECK(
         logits.dtype() == torch::kFloat32 || logits.dtype() == torch::kFloat16 || logits.dtype() == torch::kFloat,
-        "logits must be of type float32 or float16"
+        "logits must be of type kFloat32, kFloat16, kFloat"
     );
-    TORCH_CHECK_DTYPE(output_tokens, kLong);
-    TORCH_CHECK(
-        output_probs.dtype() == torch::kFloat32 || output_probs.dtype() == torch::kFloat16 || output_probs.dtype() == torch::kFloat,
-        "logits must be of type float32 or float16"
-    );
-    int vocab_size = logits.size(-1);
-    int bsz = logits.size(0);
 
-    for (int i = 0; i < bsz; i++)
+    if (top_k == 1)
     {
-        auto cur_logits = logits[i];
-        if (top_k == 1)
-        {
-            auto max_result = cur_logits.max(0);
-            auto max_val = std::get<0>(max_result).item<float>();
-            auto max_idx = std::get<1>(max_result).item<int64_t>();
-
-            output_tokens[i] = max_idx;
-            output_probs[i] = max_val;
-            continue;
-        }
-
-        // convert cur_logits to float32 if half type
-        if (cur_logits.dtype() == torch::kFloat16)
-        {
-            cur_logits = cur_logits.to(torch::kFloat32);
-        }
-        auto probs = torch::softmax(cur_logits / temperature, 0);
-
-        torch::Tensor sample_probs = probs;
-        torch::Tensor sample_indices = torch::arange(probs.size(0));
-
-        if (top_k > 0)
-        {
-            auto top_k_result = probs.topk(top_k, 0);
-            sample_probs = std::get<0>(top_k_result);
-            sample_indices = std::get<1>(top_k_result);
-            sample_probs /= torch::sum(sample_probs);
-        }
-
-        // Debug prints to examine the behavior of top_p filtering
-        if (top_p > 0.0f)
-        {
-            auto sorted_probs = sample_probs.sort(0, true);
-            auto sorted_indices = std::get<1>(sorted_probs);
-            auto cum_prob = sample_probs.cumsum(0);
-            auto mask = cum_prob <= top_p;
-            // Always keep the most probable token
-            mask[0] = 1;
-
-            sample_indices = sample_indices.masked_select(mask);
-            sample_probs = sample_probs.masked_select(mask);
-            sample_probs /= torch::sum(sample_probs);
-        }
-
-        auto sample_idx = torch::multinomial(sample_probs, 1).item<int64_t>();
-        auto token_id = sample_indices[sample_idx].item<int64_t>();
-
-        output_tokens[i] = token_id;
-        output_probs[i] = sample_probs[sample_idx].item<float>();
+        auto max_results = logits.max(1);
+        auto output_probs = std::get<0>(max_results).unsqueeze(-1);
+        auto output_tokens = std::get<1>(max_results).unsqueeze(-1);
+        return std::make_tuple(output_tokens, output_probs);
     }
+
+    auto sample_probs = torch::softmax(logits / temperature, 1);
+    auto sample_indices = torch::arange(sample_probs.size(1), logits.options()).expand({sample_probs.size(0), sample_probs.size(1)});
+
+    if (top_k > 0)
+    {
+        auto top_k_result = sample_probs.topk(top_k, 1);
+        sample_probs = std::get<0>(top_k_result);
+        sample_indices = std::get<1>(top_k_result);
+        sample_probs /= torch::sum(sample_probs, 1, true);
+    }
+
+    // Debug prints to examine the behavior of top_p filtering
+    if (top_p > 0.0f)
+    {
+        auto sorted_probs, sorted_indices;
+        std::tie(sorted_probs, sorted_indices) = sample_probs.sort(1, true);
+        auto cum_prob = sorted_probs.cumsum(1);
+
+        // Create a mask for each item in the batch
+        auto mask = cum_prob <= top_p;
+
+        // Apply mask and renormalize
+        sample_probs = sorted_probs * mask;
+        sample_probs /= torch::sum(sample_probs, 1, true);
+
+        // Align back the indices
+        sample_indices = sorted_indices.masked_select(mask);
+    }
+
+    // Sample from the (potentially filtered) distribution
+    auto sampled_ids = torch::multinomial(sample_probs, 1);
+    auto output_tokens = sample_indices.gather(1, sampled_ids).squeeze();
+    auto output_probs = sample_probs.gather(1, sampled_ids).squeeze();
+    return std::make_tuple(output_tokens, output_probs);
 }
 
 
