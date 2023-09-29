@@ -15,13 +15,15 @@ import time
 
 # Initialize model and cache
 
-model_directory = "/workspace/.cache/huggingface/hub/models--TheBloke--orca_mini_v3_7B-GPTQ/snapshots/4f06a6151128861d5bb256275620f7eadcab3238/"
+
+# model_directory = "/workspace/.cache/huggingface/hub/models--TheBloke--orca_mini_v3_7B-GPTQ/snapshots/4f06a6151128861d5bb256275620f7eadcab3238/"
+model_directory =  "/workspace/.cache/huggingface/hub/models--TheBloke--orca_mini_v3_70B-GPTQ/snapshots/840b85b8a347711e6219a5c6ac8a2b0f8692e995/"
 
 config = ExLlamaV2Config()
 config.model_dir = model_directory
 config.embed_cpu = False
 config.max_input_len = 4000
-config.max_batch_size = 5
+config.max_batch_size = 10
 config.prepare()
 
 model = ExLlamaV2(config)
@@ -32,9 +34,7 @@ print("Loading model: " + model_directory)
 model.load()
 
 tokenizer = ExLlamaV2Tokenizer(config)
-batch_size = 2
-# cache = ExLlamaV2Cache(model, batch_size=batch_size)
-cache = None
+cache = ExLlamaV2Cache(model, batch_size=2)
 
 # Initialize generator
 
@@ -48,21 +48,18 @@ settings.top_k = 1
 settings.top_p = 0.8
 settings.token_repetition_penalty = 1
 settings.disallow_tokens(tokenizer, [])
-# get the folder path of this file
-path = os.path.dirname(os.path.realpath(__file__))
-txt = open(path + "/transformers.md", "r").read()[:10000]
 
-prompt = f"""### System:
+txts = ["Write a story about a dog", "Write a story about a cat"]
+
+prompts = [f"""### System:
 You are a helpfull assistant with very good writing abilities.
 
 ### User:
 
 {txt}
 
-Write a summary of the previous article.
-
 ### Assistant:
-"""
+""" for txt in txts]
 
 max_new_tokens = 1000
 
@@ -70,18 +67,24 @@ generator.warmup()
 time_begin = time.time()
 
 # output = generator.generate_simple([prompt, prompt], settings, max_new_tokens, seed=1234)
-output = generator.generate_simple([prompt] * batch_size, settings, max_new_tokens, seed=1234)
+output = generator.generate_simple(prompts, settings, max_new_tokens, seed=1234)
 
 time_end = time.time()
 time_total = time_end - time_begin
 
-tokens_in = tokenizer.encode(prompt).shape[-1]
+
+tokens_in = 0
+for i in prompts:
+    tokens_in += tokenizer.encode(i).shape[-1]
+
 tokens_out = 0
 for o in output:
+    print(o)
     tokens_out += tokenizer.encode(o).shape[-1]
 
 
-generated_tolkens = tokens_out - batch_size*tokens_in
+generated_tolkens = tokens_out - tokens_in
+batch_size = len(prompts)
 print(
     f"Response generated in {time_total:.2f} seconds, {batch_size} batch with input tokens {tokens_in} and {generated_tolkens} generated tokens, { generated_tolkens / time_total:.2f} tokens/second"
 )

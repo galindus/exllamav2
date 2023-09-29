@@ -15,12 +15,13 @@ import time
 
 # Initialize model and cache
 
-model_directory = "/workspace/.cache/huggingface/hub/models--TheBloke--orca_mini_v3_7B-GPTQ/snapshots/4f06a6151128861d5bb256275620f7eadcab3238/"
+# model_directory = "/workspace/.cache/huggingface/hub/models--TheBloke--orca_mini_v3_7B-GPTQ/snapshots/4f06a6151128861d5bb256275620f7eadcab3238/"
+model_directory =  "/workspace/.cache/huggingface/hub/models--TheBloke--orca_mini_v3_70B-GPTQ/snapshots/840b85b8a347711e6219a5c6ac8a2b0f8692e995/"
 
 config = ExLlamaV2Config()
 config.model_dir = model_directory
 config.embed_cpu = False
-config.max_input_len = 4000
+config.max_input_len = 2048
 config.prepare()
 
 model = ExLlamaV2(config)
@@ -32,8 +33,7 @@ model.load()
 
 tokenizer = ExLlamaV2Tokenizer(config)
 batch_size = 1
-# cache = ExLlamaV2Cache(model, batch_size=batch_size)
-cache = None
+cache = ExLlamaV2Cache(model, batch_size=batch_size)
 
 # Initialize generator
 
@@ -49,7 +49,7 @@ settings.token_repetition_penalty = 1
 settings.disallow_tokens(tokenizer, [])
 # get the folder path of this file
 path = os.path.dirname(os.path.realpath(__file__))
-txt = open(path + "/transformers.md", "r").read()[:10000]
+txt = open(path + "/transformers.md", "r").read()[:1000]
 
 prompt = f"""### System:
 You are a helpfull assistant with very good writing abilities.
@@ -63,7 +63,7 @@ Write a summary of the previous article.
 ### Assistant:
 """
 
-max_new_tokens = 1000
+max_new_tokens = 100
 
 generator.warmup()
 time_begin = time.time()
@@ -76,8 +76,8 @@ time_total = time_end - time_begin
 tokens_in = tokenizer.encode(prompt).shape[-1]
 tokens_out = tokenizer.encode(output).shape[-1]
 
-# print(output)
+print(output)
 generated_tolkens = tokens_out - tokens_in
 print(
-    f"Response generated in {time_total:.2f} seconds, {batch_size} batch with input tokens {tokens_in} and {generated_tolkens} generated tokens, { generated_tolkens / time_total:.2f} tokens/second"
+    f"Response generated in {time_total:.2f} seconds, input tokens {tokens_in} and {generated_tolkens} generated tokens, { generated_tolkens / time_total:.2f} tokens/second"
 )
